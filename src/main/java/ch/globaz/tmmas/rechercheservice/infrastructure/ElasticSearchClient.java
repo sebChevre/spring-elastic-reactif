@@ -1,5 +1,6 @@
 package ch.globaz.tmmas.rechercheservice.infrastructure;
 
+import static ch.globaz.tmmas.rechercheservice.application.configuration.ElasticSearchIndexes.*;
 import ch.globaz.tmmas.rechercheservice.domaine.Personne;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,6 +11,8 @@ import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.bulk.BulkRequest;
+import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.get.GetRequest;
 import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequest;
@@ -22,15 +25,13 @@ import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.FluxSink;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.MonoSink;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
@@ -45,7 +46,10 @@ import java.util.concurrent.atomic.LongAdder;
 @Slf4j
 @RequiredArgsConstructor
 public class ElasticSearchClient {
+
+    @Autowired
     private final RestHighLevelClient client;
+    @Autowired
     private final ObjectMapper objectMapper;
 
     private final Timer indexTimer = Metrics.timer("es.timer");
@@ -62,37 +66,20 @@ public class ElasticSearchClient {
 
         return Mono.<GetResponse>create(element ->
                         //appel asynchrone via le client es
-                        client.getAsync(new GetRequest("personne", "personne", userName), listenerToMonoElement(element))
+                        client.getAsync(new GetRequest(PERSONNES.index(), PERSONNES.type(), userName),
+                                listenerToMonoElement(element))
                 )
                 .filter(GetResponse::isExists)
                 .map(GetResponse::getSource)
                 .map(map -> objectMapper.convertValue(map, Personne.class));
     }
 
-    public Mono<List<Personne>> fuzzyByUserName(String userName) {
-
-        QueryBuilder matchQueryBuilder = QueryBuilders.matchQuery("username", "sce")
-                .fuzziness(Fuzziness.AUTO)
-                .prefixLength(3)
-                .maxExpansions(10);
-
-        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
-        sourceBuilder.query(matchQueryBuilder);
-        sourceBuilder.from(0);
-        sourceBuilder.size(5);
-
-        SearchRequest request = new SearchRequest();
-        request.indices("personne");
-        request.source(sourceBuilder);
-
-        CollectionType javaType = objectMapper.getTypeFactory()
-                .constructCollectionType(List.class, Personne.class);
+    public Mono<List<Personne>> fuzzy(String term) {
 
         return Mono.<SearchResponse>create(element ->
                 //appel asynchrone via le client es
-
-
-                client.searchAsync(request, listenerToMonoElement(element))
+                client.searchAsync(fuzzySearchRequest(term,PERSONNES.index()),
+                        listenerToMonoElement(element))
 
         )
         .filter(resp -> {
@@ -137,6 +124,16 @@ public class ElasticSearchClient {
                 .doOnError(e -> log.error("Unable to index {}", doc, e));
     }
 
+    /**
+     * Indexe un élément de type {@code Personne}
+     * @param doc le document à indéxer
+     * @return une Mono contenant potentiellement la réponse
+     */
+    public Mono<BulkResponse> bulkIndex(List<Personne> docs) {
+        return bulkIndexDocs(docs)
+                .doOnError(e -> log.error("Unable to bulkindex {}", docs, e));
+    }
+
     private Mono<IndexResponse> countConcurrent(Mono<IndexResponse> mono) {
         return mono
                 .doOnSubscribe(s -> concurrent.increment())
@@ -167,12 +164,43 @@ public class ElasticSearchClient {
             }
         });
     }
+    private Mono<BulkResponse> bulkIndexDocs(List<Personne> docs) {
+        return Mono.create(sink -> {
+            try {
+                doBulkIndex(docs, listenerToMonoElement(sink));
+            } catch (JsonProcessingException e) {
+                sink.error(e);
+            }
+        });
+    }
+
 
     private void doIndex(Personne doc, ActionListener<IndexResponse> listener) throws JsonProcessingException {
-        final IndexRequest indexRequest = new IndexRequest("personne", "personne", doc.getUsername());
+        final IndexRequest indexRequest = new IndexRequest(PERSONNES.index(), PERSONNES.type(), doc.getUsername());
         final String json = objectMapper.writeValueAsString(doc);
         indexRequest.source(json, XContentType.JSON);
         client.indexAsync(indexRequest, listener);
+    }
+
+    private void doBulkIndex(List<Personne> docs, ActionListener<BulkResponse> listener) throws
+            JsonProcessingException {
+        BulkRequest bulkRequest = new BulkRequest();
+
+        docs.forEach(doc -> {
+
+            try {
+
+                IndexRequest indexRequest = new IndexRequest(PERSONNES.index(), PERSONNES.type(), doc.getUsername());
+                String json = objectMapper.writeValueAsString(doc);
+                indexRequest.source(json, XContentType.JSON);
+                bulkRequest.add(indexRequest);
+
+            } catch (JsonProcessingException e) {
+                e.printStackTrace();
+            }
+        });
+
+        client.bulkAsync(bulkRequest,listener);
     }
 
     /**
@@ -195,4 +223,27 @@ public class ElasticSearchClient {
         };
     }
 
+    private SearchRequest fuzzySearchRequest(String term, String index){
+        QueryBuilder matchQueryBuilder = QueryBuilders.multiMatchQuery(term,
+                "adresse.localite",
+                            "adresse.npa",
+                            "nom",
+                            "prenom",
+                            "nss",
+                            "employeur.ide")
+                .fuzziness(Fuzziness.AUTO)
+                .prefixLength(3)
+                .maxExpansions(10);
+
+        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+        sourceBuilder.query(matchQueryBuilder);
+        sourceBuilder.from(0);
+        sourceBuilder.size(5);
+
+        SearchRequest request = new SearchRequest();
+        request.indices(index);
+        request.source(sourceBuilder);
+
+        return request;
+    }
 }

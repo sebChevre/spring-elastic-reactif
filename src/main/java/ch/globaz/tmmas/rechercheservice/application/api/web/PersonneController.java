@@ -4,6 +4,8 @@ import ch.globaz.tmmas.rechercheservice.domaine.Personne;
 import ch.globaz.tmmas.rechercheservice.infrastructure.ElasticSearchClient;
 import com.google.common.collect.ImmutableMap;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.index.IndexResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -11,9 +13,11 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
 import javax.validation.Valid;
+import javax.websocket.server.PathParam;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/personnes")
@@ -31,6 +35,18 @@ public class PersonneController {
                 .map(m -> ResponseEntity.status(HttpStatus.CREATED).body(m));
     }
 
+    @PutMapping(value = "/bulk")
+    Mono<ResponseEntity<Map<String, Object>>> bulkPut(@Valid @RequestBody List<Personne> personnes) {
+
+        log.info("yep");
+        log.info(personnes.toString());
+
+        return elasticAdapter
+                .bulkIndex(personnes)
+                .map(this::toMap)
+                .map(m -> ResponseEntity.status(HttpStatus.CREATED).body(m));
+    }
+
     @GetMapping("/{userName}")
     Mono<ResponseEntity<Personne>> get(@PathVariable("userName") String userName) {
         return elasticAdapter
@@ -39,10 +55,14 @@ public class PersonneController {
                 .switchIfEmpty(NOT_FOUND);
     }
 
-    @GetMapping("/fuzzy/{userName}")
-    Mono<ResponseEntity<List<Personne>>> getFuzzy(@PathVariable("userName") String userName) {
+    @GetMapping("/fuzzy")
+    Mono<ResponseEntity<List<Personne>>> getFuzzy(@RequestParam(value = "term",
+            defaultValue = "756.12",required = true) String term) {
+
+        log.info("Fuzzy search with term: ",term);
+
         return elasticAdapter
-                .fuzzyByUserName(userName)
+                .fuzzy(term)
                 .map(ResponseEntity::ok);
     }
 
@@ -56,6 +76,14 @@ public class PersonneController {
                 .put("result", response.getResult().getLowercase())
                 .put("seqNo", response.getSeqNo())
                 .put("primaryTerm", response.getPrimaryTerm())
+                .build();
+    }
+
+    private ImmutableMap<String, Object> toMap(BulkResponse response) {
+        return ImmutableMap
+                .<String, Object>builder()
+                .put("items", response.getItems())
+                .put("took", response.getTook())
                 .build();
     }
 }

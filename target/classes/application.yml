@@ -3,6 +3,7 @@ server:
 
 logging.level:
   ch.globaz.tmmas: TRACE
+  org.springframework.web.servlet.mvc.support: TRACE
 
 elasticsearch:
   hosts:
