@@ -2,8 +2,8 @@
 ############################################
 # fichiers/dossiers Intellij
 ############################################
+.idea/libraries/
 .idea/
-.idea/**
 *.iml
 *.iws
 *.ipr
