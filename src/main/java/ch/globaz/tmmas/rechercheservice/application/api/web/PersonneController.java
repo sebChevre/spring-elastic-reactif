@@ -55,9 +55,9 @@ public class PersonneController {
                 .switchIfEmpty(NOT_FOUND);
     }
 
-    @GetMapping("/fuzzy")
-    Mono<ResponseEntity<List<Personne>>> getFuzzy(@RequestParam(value = "term",
-            defaultValue = "756.12",required = true) String term) {
+    @RequestMapping(value = "/fuzzy", method = RequestMethod.GET)
+    Mono<ResponseEntity<List<Personne>>> getFuzzy(@RequestParam(name = "term", value = "term",
+            defaultValue = "756.12",required = false) String term) {
 
         log.info("Fuzzy search with term: ",term);
 
