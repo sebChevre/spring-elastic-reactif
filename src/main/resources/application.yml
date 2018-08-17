@@ -13,11 +13,7 @@ elasticsearch:
   socketTimeout: 10000
   maxRetryTimeoutMillis: 60000
 
-spring.metrics.export.graphite:
-  host: localhost
-  port: 2010
-  protocol: Plaintext
-  step: PT1S
+
 
 # disable beans endpoint
 management.endpoints.beans.enabled: false
