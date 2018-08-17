@@ -1,5 +1,10 @@
 package ch.globaz.tmmas.rechercheservice.application.configuration;
 
+import ch.globaz.tmmas.rechercheservice.infrastructure.generator.ESMetrics;
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Slf4jReporter;
+import com.codahale.metrics.graphite.Graphite;
+import com.codahale.metrics.graphite.GraphiteReporter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics;
@@ -10,6 +15,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.net.InetSocketAddress;
+import java.util.concurrent.TimeUnit;
+
+import static com.codahale.metrics.MetricRegistry.name;
 
 /**
  * Classe de configuration principale de l'application
@@ -61,4 +71,29 @@ class ApplicationConfiguration {
     public JvmGcMetrics jvmGcMetrics() {
         return new JvmGcMetrics();
     }
+
+    @Bean
+    MetricRegistry metricRegistry() {
+        return new MetricRegistry();
+    }
+
+    @Bean
+    Slf4jReporter slf4jReporter() {
+        final Slf4jReporter slf4jReporter = Slf4jReporter.forRegistry(metricRegistry()).build();
+        slf4jReporter.start(1, TimeUnit.SECONDS);
+        return slf4jReporter;
+    }
+
+    @Bean
+    GraphiteReporter graphiteReporter(MetricRegistry metricRegistry) {
+        final Graphite graphite = new Graphite(new InetSocketAddress("localhost", 2003));
+        final GraphiteReporter reporter = GraphiteReporter.forRegistry(metricRegistry)
+                .prefixedWith("elastic-flux")
+                .convertRatesTo(TimeUnit.SECONDS)
+                .convertDurationsTo(TimeUnit.MILLISECONDS)
+                .build(graphite);
+        reporter.start(1, TimeUnit.SECONDS);
+        return reporter;
+    }
+
 }

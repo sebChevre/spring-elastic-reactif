@@ -57,7 +57,7 @@ public class PersonneController {
 
         log.info("Bulk random: {} element", nbreElements);
 
-        indexeur.index(nbreElements);
+        indexeur.startIndexing(nbreElements);
 
        return Mono.just(ResponseEntity.status(HttpStatus.OK).body("Process launched"));
     }

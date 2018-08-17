@@ -1,6 +1,9 @@
 package ch.globaz.tmmas.rechercheservice.infrastructure.generator;
 
 import ch.globaz.tmmas.rechercheservice.application.configuration.ElasticSearchIndexes;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.action.ActionListener;
@@ -15,6 +18,8 @@ import reactor.core.publisher.Mono;
 import reactor.core.publisher.MonoSink;
 
 import java.time.Duration;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
 
 @Component
 @Slf4j
@@ -26,22 +31,42 @@ public class Indexeur {
 	@Autowired
 	private final RestHighLevelClient client;
 
-	public void index(int count) {
+	private final Timer indexTimer = Metrics.timer("es.timer");
+	private final LongAdder concurrent = Metrics.gauge("es.concurrent", new LongAdder());
+	private final Counter successes = Metrics.counter("es.index", "result", "success");
+	private final Counter failures = Metrics.counter("es.index", "result", "failure");
+
+
+
+	public Flux<IndexResponse> index(int count, int concurrents) {
 
 		log.info("Start random indexing bulk...");
 
-		personneGenerateur
+		return personneGenerateur
 				.infinite()
 				.take(count)
-				.flatMap(this::indexDocSwallowErrors, 1)
-				.window(Duration.ofSeconds(1))
-				.flatMap(Flux::count)
-				.subscribe(winSize -> log.debug("Got {} responses in last second", winSize));
+				.flatMap(doc -> countConcurrent(measure(indexDocSwallowErrors(doc))), concurrents);
+	}
+
+	private <T> Mono<T> countConcurrent(Mono<T> input) {
+		return input
+				.doOnSubscribe(s -> concurrent.increment())
+				.doOnTerminate(concurrent::decrement);
+	}
+
+	private <T> Mono<T> measure(Mono<T> input) {
+		return Mono
+				.fromCallable(System::currentTimeMillis)
+				.flatMap(time ->
+						input.doOnSuccess(x -> indexTimer.record(System.currentTimeMillis() - time, TimeUnit.MILLISECONDS))
+				);
 	}
 
 	private Mono<IndexResponse> indexDocSwallowErrors(Doc doc) {
 		return indexDoc(doc)
+				.doOnSuccess(response -> successes.increment())
 				.doOnError(e -> log.error("Unable to index {}", doc, e))
+				.doOnError(e -> failures.increment())
 				.onErrorResume(e -> Mono.empty());
 	}
 
@@ -69,5 +94,16 @@ public class Indexeur {
 				sink.error(e);
 			}
 		};
+	}
+
+	public void startIndexing(int nbElements) {
+		Flux
+				.range(0, nbElements)
+				.map(x -> Math.max(1, x * 10))
+				.doOnNext(x -> log.debug("Target concurrency: {}", x))
+				.concatMap(concurrency -> index(5_000, concurrency))
+				.window(Duration.ofSeconds(1))
+				.flatMap(Flux::count)
+				.subscribe(winSize -> log.debug("Got {} responses in last second", winSize));
 	}
 }
