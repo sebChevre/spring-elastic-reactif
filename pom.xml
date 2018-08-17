@@ -29,6 +29,7 @@
         <jfairy.version>0.5.9</jfairy.version>
         <lombok.version>1.18.2</lombok.version>
         <jackson-joda-datatype.version>2.9.6</jackson-joda-datatype.version>
+        <jfairy.version>0.5.9</jfairy.version>
     </properties>
 
     <dependencyManagement>
@@ -94,6 +95,15 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- https://mvnrepository.com/artifact/io.codearte.jfairy/jfairy -->
+        <dependency>
+            <groupId>io.codearte.jfairy</groupId>
+            <artifactId>jfairy</artifactId>
+            <version>${jfairy.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+
         <!-- https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -124,7 +134,6 @@
             <groupId>io.codearte.jfairy</groupId>
             <artifactId>jfairy</artifactId>
             <version>${jfairy.version}</version>
-            <scope>test</scope>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/org.projectlombok/lombok -->

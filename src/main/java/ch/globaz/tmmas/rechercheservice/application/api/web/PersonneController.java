@@ -2,17 +2,20 @@ package ch.globaz.tmmas.rechercheservice.application.api.web;
 
 import ch.globaz.tmmas.rechercheservice.domaine.Personne;
 import ch.globaz.tmmas.rechercheservice.infrastructure.ElasticSearchClient;
+import ch.globaz.tmmas.rechercheservice.infrastructure.generator.Indexeur;
 import com.google.common.collect.ImmutableMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.index.IndexResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
 import javax.validation.Valid;
+import javax.websocket.server.PathParam;
 import java.util.List;
 import java.util.Map;
 
@@ -25,6 +28,9 @@ public class PersonneController {
     private static final Mono<ResponseEntity<Personne>> NOT_FOUND = Mono.just(ResponseEntity.notFound().build());
 
     private final ElasticSearchClient elasticAdapter;
+
+    @Autowired
+    Indexeur indexeur;
 
     @PutMapping
     Mono<ResponseEntity<Map<String, Object>>> put(@Valid @RequestBody Personne person) {
@@ -44,6 +50,16 @@ public class PersonneController {
                 .bulkIndex(personnes)
                 .map(this::toMap)
                 .map(m -> ResponseEntity.status(HttpStatus.CREATED).body(m));
+    }
+
+    @PutMapping(value = "/bulkRandom")
+    Mono<ResponseEntity> bulkPut(@RequestParam("nb") int nbreElements) {
+
+        log.info("Bulk random: {} element", nbreElements);
+
+        indexeur.index(nbreElements);
+
+       return Mono.just(ResponseEntity.status(HttpStatus.OK).body("Process launched"));
     }
 
     @GetMapping("/{userName}")

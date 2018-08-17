@@ -21,9 +21,10 @@ public class Employeur {
     private  String email;
 
     @NotNull
-    private  URL url;
+    private  String url;
 
     @NotBlank
     private  String ide;
+
 
 }
