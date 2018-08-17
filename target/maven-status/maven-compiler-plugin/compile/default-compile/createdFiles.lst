@@ -1,0 +1,10 @@
+ch/globaz/tmmas/rechercheservice/application/RechercheServiceApplication.class
+ch/globaz/tmmas/rechercheservice/infrastructure/ElasticSearchClient$1.class
+ch/globaz/tmmas/rechercheservice/domaine/Adresse.class
+ch/globaz/tmmas/rechercheservice/application/configuration/ElasticSearchIndexes.class
+ch/globaz/tmmas/rechercheservice/infrastructure/ElasticSearchClient.class
+ch/globaz/tmmas/rechercheservice/domaine/Employeur.class
+ch/globaz/tmmas/rechercheservice/application/configuration/ApplicationConfiguration.class
+ch/globaz/tmmas/rechercheservice/application/configuration/ElasticSearchProperties.class
+ch/globaz/tmmas/rechercheservice/application/api/web/PersonneController.class
+ch/globaz/tmmas/rechercheservice/domaine/Personne.class

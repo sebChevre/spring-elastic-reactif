@@ -4,7 +4,6 @@ import static ch.globaz.tmmas.rechercheservice.application.configuration.Elastic
 import ch.globaz.tmmas.rechercheservice.domaine.Personne;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.type.CollectionType;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.Timer;
@@ -17,13 +16,14 @@ import org.elasticsearch.action.get.GetRequest;
 import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.index.IndexResponse;
+import org.elasticsearch.action.search.MultiSearchRequest;
+import org.elasticsearch.action.search.MultiSearchResponse;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.client.Response;
 import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.common.unit.Fuzziness;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.QueryBuilder;
-import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -32,9 +32,11 @@ import reactor.core.publisher.MonoSink;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.stream.Collectors;
 
 /**
  * Client elasticsearch réactif "adapté". <br/>
@@ -74,22 +76,127 @@ public class ElasticSearchClient {
                 .map(map -> objectMapper.convertValue(map, Personne.class));
     }
 
-    public Mono<List<Personne>> fuzzy(String term) {
+    public Mono<List<Personne>> recherche(String methode,String terme){
+
+        log.debug("Search with methode : {} and terme: {}",methode,terme);
+
+        switch (methode){
+            case "fuzzy":
+                return fuzzy(fuzzySearchRequest(terme,methode));
+            case "wildcards":
+                return wildCard(wildCardsSearchRequest(terme,methode));
+            case "composed":
+                return composed(composedSearchRequest(terme,methode));
+            default:
+                throw new IllegalArgumentException("methode name specified error : " + methode);
+        }
+
+    }
+
+    private Mono<List<Personne>> composed(MultiSearchRequest searchRequest) {
+/**
+
+        return Mono.<MultiSearchResponse>create(element ->
+                //appel asynchrone via le client es
+                client.multiSearchAsync(searchRequest, listenerToMonoElement(element))
+        )
+                .filter(resp ->
+                        //pas de reultats on ne mappe rien
+                        resp.getHits().totalHits > 0
+                )
+                .map(multiReponse -> {
+
+                    MultiSearchResponse.Item first = multiReponse.getResponses()[0];
+
+                    first.getResponse().getHits()
+                    first.getResponse().getHits().forEach(hit -> {
+                        try {
+                            return objectMapper.readValue(hit.getSourceAsString(),Personne.class);
+                        } catch (IOException e) {
+                            log.error("IO Exception when deserialising hit :" + hit.getSourceAsString());
+                        }
+                    });
+
+
+                    MultiSearchResponse.Item second = multiReponse.getResponses()[1];
+
+                    List<Personne> personnes = new ArrayList<>();
+
+                    return Arrays.asList(map.getHits().getHits()).stream()
+                            .map(hit -> {
+                                log.info(hit.getSourceAsString());
+                                try {
+                                    return objectMapper.readValue(hit.getSourceAsString(),Personne.class);
+                                } catch (IOException e) {
+                                    log.error("IO Exception when deserialising hit :" + hit.getSourceAsString());
+                                    return null;
+                                }
+                            })
+                            .collect(Collectors.toList());
+                });
+ */
+
+return null;
+    }
+
+    private Mono<List<Personne>> wildCard(SearchRequest searchRequest) {
 
         return Mono.<SearchResponse>create(element ->
                 //appel asynchrone via le client es
-                client.searchAsync(fuzzySearchRequest(term,PERSONNES.index()),
-                        listenerToMonoElement(element))
-
+                client.searchAsync(searchRequest, listenerToMonoElement(element))
         )
-        .filter(resp -> {
-            return resp.getHits().totalHits > 0;
-        })
+        .filter(resp ->
+                //pas de reultats on ne mappe rien
+                resp.getHits().totalHits > 0
+        )
         .map(map -> {
 
             List<Personne> personnes = new ArrayList<>();
 
-            map.getHits().forEach(hit -> {
+            return Arrays.asList(map.getHits().getHits()).stream()
+                    .map(hit -> {
+                        log.info(hit.getSourceAsString());
+                        try {
+                            return objectMapper.readValue(hit.getSourceAsString(),Personne.class);
+                        } catch (IOException e) {
+                            log.error("IO Exception when deserialising hit :" + hit.getSourceAsString());
+                            return null;
+                        }
+                    })
+                    .collect(Collectors.toList());
+        });
+
+    }
+
+    public Mono<List<Personne>> fuzzy(SearchRequest searchRequest) {
+
+
+        return Mono.<SearchResponse>create(element ->
+            //appel asynchrone via le client es
+            client.searchAsync(searchRequest,
+                    listenerToMonoElement(element))
+        )
+        .filter(resp ->
+            //pas de reultats on ne mappe rien
+                resp.getHits().totalHits > 0
+        )
+        .map(map -> {
+
+            List<Personne> personnes = new ArrayList<>();
+
+            return Arrays.asList(map.getHits().getHits()).stream()
+                    .map(hit -> {
+                        log.info(hit.getSourceAsString());
+                        try {
+                            return objectMapper.readValue(hit.getSourceAsString(),Personne.class);
+                        } catch (IOException e) {
+                            log.error("IO Exception when deserialising hit :" + hit.getSourceAsString());
+                            return null;
+                        }
+                    })
+                    .collect(Collectors.toList());
+
+           /* map.getHits().forEach(hit -> {
                 log.info(hit.getSourceAsString());
                 try {
                     personnes.add(objectMapper.readValue(hit.getSourceAsString(),Personne.class));
@@ -98,16 +205,8 @@ public class ElasticSearchClient {
                 }
             });
 
-            //Arrays.asList(map.getHits()).forEach(el -> log.info(el.getS));
 
-
-
-            /**List<Personne> perss = objectMapper.convertValue(tc, javaType);
-
-            perss.forEach(el -> log.info(el.toString()));
-            return perss;*/
-
-            return personnes;
+            return personnes;*/
         });
     }
 
@@ -213,37 +312,48 @@ public class ElasticSearchClient {
         return new ActionListener<T>() {
             @Override
             public void onResponse(T response) {
+                log.debug("OnResponse: {}", response);
                 element.success(response);
             }
 
             @Override
             public void onFailure(Exception e) {
+                log.debug("OnFailure: {}", e.getMessage());
                 element.error(e);
             }
         };
     }
 
-    private SearchRequest fuzzySearchRequest(String term, String index){
-        QueryBuilder matchQueryBuilder = QueryBuilders.multiMatchQuery(term,
-                "adresse.localite",
-                            "adresse.npa",
-                            "nom",
-                            "prenom",
-                            "nss",
-                            "employeur.ide")
-                .fuzziness(Fuzziness.AUTO)
-                .prefixLength(3)
-                .maxExpansions(10);
+    private SearchRequest wildCardsSearchRequest(String terme, String index) {
 
-        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
-        sourceBuilder.query(matchQueryBuilder);
-        sourceBuilder.from(0);
-        sourceBuilder.size(5);
+        QueryBuilder wildCardQueryBuilder = QueryBuilderFactory.wildCarsdQueryBuilder(terme);
 
-        SearchRequest request = new SearchRequest();
-        request.indices(index);
-        request.source(sourceBuilder);
+        return new SearchRequest()
+                .indices(index)
+                .source(new SearchSourceBuilder().query(wildCardQueryBuilder).from(0).size(5));
 
-        return request;
     }
+
+    private MultiSearchRequest composedSearchRequest(String terme, String index) {
+
+        MultiSearchRequest multiSearchRequest  = new MultiSearchRequest();
+        multiSearchRequest.add(wildCardsSearchRequest(terme,index));
+        multiSearchRequest.add(fuzzySearchRequest(terme,index));
+
+        return multiSearchRequest;
+    }
+
+
+    private SearchRequest fuzzySearchRequest(String terme, String index){
+
+        QueryBuilder fuzzyCardQueryBuilder = QueryBuilderFactory.fuzzyQueryBuilder(terme);
+
+        return new SearchRequest()
+                .indices(index)
+                .source(new SearchSourceBuilder().query(fuzzyCardQueryBuilder).from(0).size(5));
+
+
+    }
+
+
 }

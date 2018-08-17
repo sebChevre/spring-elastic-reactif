@@ -1,0 +1,87 @@
+# Created by .ignore support plugin (hsz.mobi)
+############################################
+# fichiers/dossiers Intellij
+############################################
+.idea/
+.idea/**
+*.iml
+*.iws
+*.ipr
+*.ids
+*.orig
+.idea/**/tasks.xml
+.idea/dictionaries
+.idea/**/dataSources/
+.idea/**/dataSources.ids
+.idea/**/dataSources.xml
+.idea/**/dataSources.local.xml
+.idea/**/sqlDataSources.xml
+.idea/**/dynamic.xml
+.idea/**/uiDesigner.xml
+.idea/replstate.xml
+.idea_modules/
+out/
+
+############################################
+# fichiers/dossiers Eclipse
+############################################
+/.settings
+*.classpath
+*.project
+*/.settings/
+*.bpmn/
+
+############################################
+# fichiers/dossiers Maven
+############################################
+log/
+target/
+static/
+
+############################################
+# fichiers Windows
+############################################
+# Windows image file caches
+Thumbs.db
+
+# Folder config file
+Desktop.ini
+
+############################################
+# fichiers Mac OSX
+############################################
+.DS_Store
+
+############################################
+# fichiers Logs
+############################################
+*.log
+logs
+
+############################################
+# Divers
+############################################
+*.class
+*.*~
+*~
+.merge_file*
+
+#structure101 plugin
+*.state
+
+# CMake
+cmake-build-debug/
+
+# Crashlytics plugin (for Android Studio and IntelliJ)
+com_crashlytics_export_strings.xml
+crashlytics.properties
+crashlytics-build.properties
+fabric.properties
+
+# JIRA plugin
+atlassian-ide-plugin.xml
+
+############################################
+# Maven Wrapper
+############################################
+!.mvn/wrapper/maven-wrapper.jar

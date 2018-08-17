@@ -29,30 +29,30 @@ class PersonnesControllerTest extends Specification{
 
     def 'should index document'() {
         given:
-        HttpEntity<String> request = indexRequest(PersonneDocumentsExample.DOCUMENT_1)
-        print("request: " + request)
+            HttpEntity<String> request = indexRequest(PersonneDocumentsExample.DOCUMENT_1)
+            print("request: " + request)
         when:
-        ResponseEntity<String> response = rest.exchange(url(), PUT, request, String)
+            ResponseEntity<String> response = rest.exchange(url(), PUT, request, String)
         then:
-        print(response)
-        response.statusCode == CREATED
+            print(response)
+            response.statusCode == CREATED
     }
 
     def 'should bulkindex document'() {
         given:
-        HttpEntity<String> request = indexRequest(PersonneDocumentsExample.documents())
-        print("request: " + request)
+            HttpEntity<String> request = indexRequest(PersonneDocumentsExample.documents())
+            print("request: " + request)
         when:
-        ResponseEntity<String> response = rest.exchange(bulkUrl(), PUT, request, String)
+            ResponseEntity<String> response = rest.exchange(bulkUrl(), PUT, request, String)
         then:
-        def object = jsonSlurper.parseText(response.body)
-        object.items.size == 3
-        response.statusCode == CREATED
+            def object = jsonSlurper.parseText(response.body)
+            object.items.size == 3
+            response.statusCode == CREATED
     }
 
     def 'should find indexed document'() {
         given:
-        assert rest.exchange(url(), PUT, indexRequest(PersonneDocumentsExample.DOCUMENT_1), String).statusCode ==
+            assert rest.exchange(url(), PUT, indexRequest(PersonneDocumentsExample.DOCUMENT_1), String).statusCode ==
                 CREATED
         when:
         ResponseEntity<Map> response = rest.getForEntity(url() + "/" + PersonneDocumentsExample.USER_NAME1, Map)
@@ -63,15 +63,16 @@ class PersonnesControllerTest extends Specification{
 
     def 'should find indexed document with fuzzy'() {
         given:
-        assert rest.exchange(bulkUrl(), PUT, indexRequest(PersonneDocumentsExample.documents()), String).statusCode ==
-                CREATED
+            assert rest.exchange(bulkUrl(), PUT, indexRequest(PersonneDocumentsExample.documents()), String)
+                .statusCode == CREATED
         when:
-        sleep(1000)
-        ResponseEntity<List> response = rest.getForEntity(url() + "/fuzzy?term=756.12", List)
+            sleep(1000)
+            ResponseEntity<List> response = rest.getForEntity(url() + "/fuzzy?term=756.12", List)
         then:
-        response.statusCode == OK
-        print response.body
-        response.body[0].adresse.rue == 'Eglise'
+            response.statusCode == OK
+            print response.body
+            response.body.size() == 1;
+            response.body[0].adresse.rue == 'Eglise'
     }
 
 
