@@ -25,7 +25,7 @@
         <spring-boot.version>2.0.4.RELEASE</spring-boot.version>
         <micrometer-registry-graphite.version>1.0.6</micrometer-registry-graphite.version>
         <reactor-test.version>3.1.8.RELEASE</reactor-test.version>
-        <elasticsearch.version>6.1.0</elasticsearch.version>
+        <elasticsearch.version>6.2.0</elasticsearch.version>
         <jfairy.version>0.5.9</jfairy.version>
         <lombok.version>1.18.2</lombok.version>
         <jackson-joda-datatype.version>2.9.6</jackson-joda-datatype.version>

@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
 import javax.validation.Valid;
-import javax.websocket.server.PathParam;
 import java.util.List;
 import java.util.Map;
 
@@ -55,16 +54,18 @@ public class PersonneController {
                 .switchIfEmpty(NOT_FOUND);
     }
 
-    @RequestMapping(value = "/fuzzy", method = RequestMethod.GET)
-    Mono<ResponseEntity<List<Personne>>> getFuzzy(@RequestParam(name = "term", value = "term",
-            defaultValue = "756.12",required = false) String term) {
+    @GetMapping("/recherche")
+    Mono<ResponseEntity<List<Personne>>> getFuzzy(
+            @RequestParam("terme") String terme,
+            @RequestParam("methode") String methode){
 
-        log.info("Fuzzy search with term: ",term);
+        log.info("Search with methode: {} and terme: {}",methode,terme);
 
         return elasticAdapter
-                .fuzzy(term)
+                .recherche(methode,terme)
                 .map(ResponseEntity::ok);
     }
+
 
     private ImmutableMap<String, Object> toMap(IndexResponse response) {
         return ImmutableMap
