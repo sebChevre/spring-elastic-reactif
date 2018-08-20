@@ -14,8 +14,30 @@ elasticsearch:
   maxRetryTimeoutMillis: 60000
 
 
+management:
 
-# disable beans endpoint
-management.endpoints.beans.enabled: false
-# expose all endpoints:
-management.endpoints.web.exposure.include: "*"
+  endpoint:
+    metrics:
+      enabled: true
+
+    prometheus:
+      enabled: true
+
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+  endpoints:
+
+    web:
+      exposure:
+        include: "*"
+    beans:
+      enabled: true
+
+
+
+
+
+
