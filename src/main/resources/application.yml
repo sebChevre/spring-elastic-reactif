@@ -38,6 +38,12 @@ management:
 
 
 
+kafka:
+  bootstrapAddress:
+    localhost:9092
 
+personneIndexCree:
+  topic:
+    name: personne-index-cree
 
 

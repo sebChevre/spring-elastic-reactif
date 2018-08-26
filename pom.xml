@@ -30,6 +30,7 @@
         <lombok.version>1.18.2</lombok.version>
         <jackson-joda-datatype.version>2.9.6</jackson-joda-datatype.version>
         <jfairy.version>0.5.9</jfairy.version>
+        <kafka.version>2.1.6.RELEASE</kafka.version>
     </properties>
 
     <dependencyManagement>
@@ -56,15 +57,17 @@
 
     <dependencies>
 
+        <!-- **** KAFKA **** -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+            <version>${kafka.version}</version>
+        </dependency>
+
         <!-- **** SPRING **** -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
 
         <dependency>
@@ -87,14 +90,7 @@
             <version>${elasticsearch.version}</version>
         </dependency>
 
-        <!-- **** TESTS **** -->
-        <!-- https://mvnrepository.com/artifact/io.projectreactor/reactor-test -->
-        <dependency>
-            <groupId>io.projectreactor</groupId>
-            <artifactId>reactor-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-
+       
         <!-- https://mvnrepository.com/artifact/io.codearte.jfairy/jfairy -->
         <dependency>
             <groupId>io.codearte.jfairy</groupId>
@@ -136,6 +132,7 @@
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
+            <version>1.0.6</version>
         </dependency>
 
 

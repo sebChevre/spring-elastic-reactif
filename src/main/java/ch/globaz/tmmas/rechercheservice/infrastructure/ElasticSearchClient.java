@@ -4,6 +4,7 @@ import static ch.globaz.tmmas.rechercheservice.application.configuration.Elastic
 
 import ch.globaz.tmmas.rechercheservice.application.configuration.ElasticSearchIndexes;
 import ch.globaz.tmmas.rechercheservice.domaine.Personne;
+import ch.globaz.tmmas.rechercheservice.domaine.PersonneIndex;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Counter;
@@ -30,10 +31,10 @@ import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-import reactor.core.publisher.MonoSink;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -42,6 +43,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Client elasticsearch réactif "adapté". <br/>
@@ -69,19 +71,18 @@ public class ElasticSearchClient {
      * @param userName le nom d'utilisateur recherché
      * @return une instance de Mono contenant potentiellement l'élément
      */
-    public Mono<Personne> findByUserName(String userName) {
+    public ResponseEntity findByUserName(String userName) throws IOException {
 
-        return Mono.<GetResponse>create(element ->
-                        //appel asynchrone via le client es
-                        client.getAsync(new GetRequest(PERSONNES.index(), PERSONNES.type(), userName),
-                                listenerToMonoElement(element))
-                )
-                .filter(GetResponse::isExists)
-                .map(GetResponse::getSource)
-                .map(map -> objectMapper.convertValue(map, Personne.class));
+        GetResponse getResponse = client.get(new GetRequest(PERSONNES.index(), PERSONNES.type(), userName));
+
+        if(getResponse.isExists()){
+            return new ResponseEntity<Personne>(objectMapper.convertValue(getResponse.getSource(),Personne.class),
+                    HttpStatus.OK);
+        }
+         return ResponseEntity.notFound().build();
     }
 
-    public Mono<List<Personne>> recherche(String methode,String terme){
+    public List<Personne> recherche(String methode,String terme) throws IOException {
 
         log.debug("Search with methode : {} and terme: {}",methode,terme);
 
@@ -101,127 +102,79 @@ public class ElasticSearchClient {
 
     }
 
-    private Mono<List<Personne>> composed(MultiSearchRequest searchRequest) {
+    private List<Personne> composed(MultiSearchRequest searchRequest) throws IOException {
 
-        return Mono.<MultiSearchResponse>create(element ->{
-            //appel asynchrone via le client es
-            log.info("Async multisearch call");
-            client.multiSearchAsync(searchRequest, listenerToMonoElement(element));
-        })
-        .filter(resp ->{
-            //pas de reultats on ne mappe rien
-            log.info("Filter resulats, size : {}",resp.getResponses().length);
-            return resp.getResponses().length > 0;
-        })
-        .map(multiReponse -> {
+        MultiSearchResponse composerResponse = client.multiSearch(searchRequest);
 
-            MultiSearchResponse.Item first = multiReponse.getResponses()[0];
-            log.info("First multisearch response {}",first.getResponse().getHits().totalHits);
-            MultiSearchResponse.Item second = multiReponse.getResponses()[1];
-            log.info("Second multisearch response {}",second.getResponse().getHits().totalHits);
+        MultiSearchResponse.Item first = composerResponse.getResponses()[0];
+        log.info("First multisearch response {}",first.getResponse().getHits().totalHits);
 
-            Flux<SearchHit> firstFluxSearchHit = Flux.fromIterable(Arrays.asList(first.getResponse().getHits()
-                    .getHits()));
-            Flux<SearchHit> secondFluxSearchHit = Flux.fromIterable(Arrays.asList(second.getResponse().getHits()
-                    .getHits()));
+        MultiSearchResponse.Item second = composerResponse.getResponses()[1];
+        log.info("Second multisearch response {}",second.getResponse().getHits().totalHits);
+
+        Stream<SearchHit> firstStream = Stream.of(first.getResponse().getHits().getHits());
+        Stream<SearchHit> secondStream = Stream.of(second.getResponse().getHits().getHits());
 
 
-            Flux<SearchHit> searchHitsFlux = Flux.concat(firstFluxSearchHit, secondFluxSearchHit);
+        List<Personne> personnes = Stream.concat(firstStream,secondStream)
+                .map(hit -> {
+                    log.info("Sync multisearch composed flux iteration for serialzation:; {}",hit.getSourceAsString());
+                    try {
+                        return objectMapper.readValue(hit.getSourceAsString(), Personne.class);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        return null;
+                    }
+                }).collect(Collectors.toList());
 
-            List<Personne> personnes = new ArrayList<>();
-
-            log.info("Async multisearch composed flux iteration");
-            searchHitsFlux
-                    .map(hit -> {
-                        try {
-                            log.info("Async multisearch composed flux iteration for serialzation:; {}",hit.getSourceAsString());
-                            return objectMapper.readValue(hit.getSourceAsString(), Personne.class);
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                            return null;
-                        }
-                    })
-                    .subscribe(personnes::add);
 
 
             return personnes
                     .stream()
                     .distinct()
                     .collect(Collectors.toList());
-        });
 
     }
 
 
-    private Mono<List<Personne>> wildCard(SearchRequest searchRequest) {
+    private List<Personne> wildCard(SearchRequest searchRequest) throws IOException {
 
-        return Mono.<SearchResponse>create(element ->
-                //appel asynchrone via le client es
-                client.searchAsync(searchRequest, listenerToMonoElement(element))
-        )
-        .filter(resp ->
-                //pas de reultats on ne mappe rien
-                resp.getHits().totalHits > 0
-        )
-        .map(map -> {
 
-            List<Personne> personnes = new ArrayList<>();
+        SearchResponse response = client.search(searchRequest);
 
-            return Arrays.asList(map.getHits().getHits()).stream()
-                    .map(hit -> {
-                        log.info(hit.getSourceAsString());
-                        try {
-                            return objectMapper.readValue(hit.getSourceAsString(),Personne.class);
-                        } catch (IOException e) {
-                            log.error("IO Exception when deserialising hit :" + hit.getSourceAsString());
-                            return null;
-                        }
-                    })
-                    .collect(Collectors.toList());
-        });
+        Stream<SearchHit> fluxWildCards = Stream.of(response.getHits().getHits());
+
+        return  fluxWildCards.map(hit -> {
+            log.info(hit.getSourceAsString());
+            try {
+                return objectMapper.readValue(hit.getSourceAsString(),Personne.class);
+            } catch (IOException e) {
+                log.error("IO Exception when deserialising hit :" + hit.getSourceAsString());
+                return null;
+            }
+        }).collect(Collectors.toList());
+
+
 
     }
 
-    public Mono<List<Personne>> fuzzy(SearchRequest searchRequest) {
+    public List<Personne> fuzzy(SearchRequest searchRequest) throws IOException {
 
 
-        return Mono.<SearchResponse>create(element ->
-            //appel asynchrone via le client es
-            client.searchAsync(searchRequest,
-                    listenerToMonoElement(element))
-        )
-        .filter(resp ->
-            //pas de reultats on ne mappe rien
-                resp.getHits().totalHits > 0
-        )
-        .map(map -> {
+        SearchResponse response = client.search(searchRequest);
 
-            List<Personne> personnes = new ArrayList<>();
+        Stream<SearchHit> fluxWildCards = Stream.of(response.getHits().getHits());
 
-            return Arrays.asList(map.getHits().getHits()).stream()
-                    .map(hit -> {
-                        log.info(hit.getSourceAsString());
-                        try {
-                            return objectMapper.readValue(hit.getSourceAsString(),Personne.class);
-                        } catch (IOException e) {
-                            log.error("IO Exception when deserialising hit :" + hit.getSourceAsString());
-                            return null;
-                        }
-                    })
-                    .collect(Collectors.toList());
+        return  fluxWildCards.map(hit -> {
+            log.info(hit.getSourceAsString());
+            try {
+                return objectMapper.readValue(hit.getSourceAsString(),Personne.class);
+            } catch (IOException e) {
+                log.error("IO Exception when deserialising hit :" + hit.getSourceAsString());
+                return null;
+            }
+        }).collect(Collectors.toList());
 
-           /* map.getHits().forEach(hit -> {
-                log.info(hit.getSourceAsString());
-                try {
-                    personnes.add(objectMapper.readValue(hit.getSourceAsString(),Personne.class));
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            });
-
-
-            return personnes;*/
-        });
     }
 
     /**
@@ -229,25 +182,21 @@ public class ElasticSearchClient {
      * @param doc le document à indéxer
      * @return une Mono contenant potentiellement la réponse
      */
-    public Mono<IndexResponse> index(Personne doc) {
-        return indexDoc(doc)
-                .compose(this::countSuccFail)
-                .compose(this::countConcurrent)
-                .compose(this::measureTime)
-                .doOnError(e -> log.error("Unable to index {}", doc, e));
+    public IndexResponse index(PersonneIndex doc) throws IOException {
+        return indexDoc(doc);
     }
 
     /**
      * Indexe un élément de type {@code Personne}
-     * @param doc le document à indéxer
+     * @param docs le document à indéxer
      * @return une Mono contenant potentiellement la réponse
      */
-    public Mono<BulkResponse> bulkIndex(List<Personne> docs) {
-        return bulkIndexDocs(docs)
-                .doOnError(e -> log.error("Unable to bulkindex {}", docs, e));
+    public BulkResponse bulkIndex(List<Personne> docs) throws IOException {
+        return bulkIndexDocs(docs);
     }
 
-    private Mono<IndexResponse> countConcurrent(Mono<IndexResponse> mono) {
+    /**
+    private IndexResponse countConcurrent(IndexResponse response) {
         return mono
                 .doOnSubscribe(s -> concurrent.increment())
                 .doOnTerminate(concurrent::decrement);
@@ -268,35 +217,29 @@ public class ElasticSearchClient {
                 .doOnSuccess(response -> successes.increment());
     }
 
-    private Mono<IndexResponse> indexDoc(Personne doc) {
-        return Mono.create(sink -> {
-            try {
-                doIndex(doc, listenerToMonoElement(sink));
-            } catch (JsonProcessingException e) {
-                sink.error(e);
-            }
-        });
+     */
+
+    private IndexResponse indexDoc(PersonneIndex doc) throws IOException {
+        return doIndex(doc);
+
     }
-    private Mono<BulkResponse> bulkIndexDocs(List<Personne> docs) {
-        return Mono.create(sink -> {
-            try {
-                doBulkIndex(docs, listenerToMonoElement(sink));
-            } catch (JsonProcessingException e) {
-                sink.error(e);
-            }
-        });
+    private BulkResponse bulkIndexDocs(List<Personne> docs) throws IOException {
+         return doBulkIndex(docs);
+
     }
 
 
-    private void doIndex(Personne doc, ActionListener<IndexResponse> listener) throws JsonProcessingException {
-        final IndexRequest indexRequest = new IndexRequest(PERSONNES.index(), PERSONNES.type(), doc.getUsername());
+    private IndexResponse doIndex(PersonneIndex doc) throws IOException {
+        final IndexRequest indexRequest = new IndexRequest(PERSONNES.index(), PERSONNES.type(), doc.getNss());
         final String json = objectMapper.writeValueAsString(doc);
         indexRequest.source(json, XContentType.JSON);
-        client.indexAsync(indexRequest, listener);
+        log.info("OK ES");
+        return client.index(indexRequest);
+
     }
 
-    private void doBulkIndex(List<Personne> docs, ActionListener<BulkResponse> listener) throws
-            JsonProcessingException {
+    private BulkResponse doBulkIndex(List<Personne> docs) throws
+            IOException {
         BulkRequest bulkRequest = new BulkRequest();
 
         docs.forEach(doc -> {
@@ -313,30 +256,10 @@ public class ElasticSearchClient {
             }
         });
 
-        client.bulkAsync(bulkRequest,listener);
+        return client.bulk(bulkRequest,null);
     }
 
-    /**
-     * Callback du client es de base. Le listener traite le mono retourné.
-     * @param element l'élément potentiel retourné (un Mono retourn o à 1 élément)
-     * @param <T> le type de l'élément
-     * @return une instance de {@code ActionListener}
-     */
-    private <T> ActionListener<T> listenerToMonoElement(MonoSink<T> element) {
-        return new ActionListener<T>() {
-            @Override
-            public void onResponse(T response) {
-                log.debug("OnResponse: {}", response);
-                element.success(response);
-            }
 
-            @Override
-            public void onFailure(Exception e) {
-                log.debug("OnFailure: {}", e.getMessage());
-                element.error(e);
-            }
-        };
-    }
 
     private SearchRequest wildCardsSearchRequest(String terme, String index) {
 
